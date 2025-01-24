@@ -240,7 +240,7 @@ trendButton.addEventListener("click", function () {
                     
                     const xMin = d3.timeFormat("%Y-%m")(data[startIndex].Datum);
                     const xMax = d3.timeFormat("%Y-%m")(data[endIndex].Datum);
-                    document.getElementById("chart-title").textContent = `PRA2 Visualización de la Inflación a lo largo del tiempo (${xMin} - ${xMax})`;
+                    document.getElementById("chart-title").textContent = `PRA2 Visualización de la Inflación en Alemania a lo largo del tiempo (${xMin} - ${xMax})`;
 
 
                     xScale.domain(d3.extent(filteredData, d => d.Datum));
