@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Inflation Chart</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        svg {
+            width: 90vw;
+            height: 75vh;
+            background: white;
+            border: 1px solid #ddd;
+        }
+        .legend {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .legend div {
+            display: flex;
+            align-items: center;
+        }
+        .legend input {
+            margin-right: 5px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 10px;
+            width: 80vw;
+        }
+        .slider-label {
+            font-weight: bold;
+            min-width: 60px;
+        }
+        .slider-range {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            gap: 10px;
+        }
+        input[type="range"] {
+            flex: 1;
+        }
+
+        .label-container {
+    position: absolute;
+    pointer-events: none;
+}
+
+.extreme-label {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    color: black;
+    text-align: center;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease-in-out;
+}
+#toggle-extremes {
+    padding: 10px 20px; /* Relleno interno de los botones */
+    font-size: 14px; /* Tamaño de texto */
+    background-color: #4CAF50; /* Color de fondo verde */
+    color: white; /* Color del texto */
+    border: none; /* Elimina el borde por defecto */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambia el cursor a puntero */
+    transition: background-color 0.3s ease; /* Animación al pasar el ratón */
+    left: 11px;
+    position: absolute;
+    margin-top: 1%;
+    margin-left: 3%;
+}
+
+#toggle-trend {
+    padding: 10px 20px; /* Relleno interno de los botones */
+    font-size: 14px; /* Tamaño de texto */
+    background-color: #4CAF50; /* Color de fondo verde */
+    color: white; /* Color del texto */
+    border: none; /* Elimina el borde por defecto */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer; /* Cambia el cursor a puntero */
+    transition: background-color 0.3s ease; /* Animación al pasar el ratón */
+    margin-right: 65%; /* Espacio a la derecha */
+    position: absolute;
+    margin-top: 1%;
+
+}
+
+/* Efecto hover para los botones */
+#toggle-extremes:hover, #toggle-trend:hover {
+    background-color: #45a049; /* Color de fondo al pasar el ratón */
+}
+    </style>
+</head>
+<body>
+    <h2 id="chart-title">PRA2 Visualización de la Inflación a lo largo del tiempo</h2>
+
+
+    <script>
+        
+        document.addEventListener("DOMContentLoaded", function () {
+            const margin = { top: 20, right: 30, bottom: 50, left: 50 },
+                  width = window.innerWidth * 0.85 - margin.left - margin.right,
+                  height = window.innerHeight * 0.7 - margin.top - margin.bottom;
+    
+            const svg = d3.select("body")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+    
+            const tooltip = d3.select("body")
+                .append("div")
+                .style("position", "absolute")
+                .style("background", "rgba(0, 0, 0, 0.8)")
+                .style("color", "#fff")
+                .style("padding", "5px 10px")
+                .style("border-radius", "5px")
+                .style("font-size", "12px")
+                .style("pointer-events", "none")
+                .style("display", "none");
+    
+            const hoverLine = svg.append("line")
+                .attr("stroke", "black")
+                .attr("stroke-width", 1)
+                .attr("stroke-dasharray", "4 4")
+                .style("display", "none");
+    
+            d3.dsv(";", "./preis.csv").then(function (data) {
+                data.forEach(d => {
+                    d.Datum = d3.timeParse("%Y-%m")(d.Datum);
+                    Object.keys(d).forEach(key => {
+                        if (key !== "Datum") d[key] = parseFloat(d[key].replace(',', '.')) || 0;
+                    });
+                });
+    
+                const variables = Object.keys(data[0]).slice(1);
+                const colors = d3.scaleOrdinal(d3.schemeCategory10).domain(variables);
+                let activeVariables = new Set(variables);
+    
+                const xScale = d3.scaleTime().range([0, width]);
+                const yScale = d3.scaleLinear().range([height, 0]);
+    
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .attr("class", "x-axis");
+                
+                svg.append("g").attr("class", "y-axis");
+    
+                const line = d3.line()
+                    .curve(d3.curveMonotoneX)  // ✅ Smooths the line
+                    .x(d => xScale(d.Datum))
+                    .y(d => yScale(d.value));
+    
+                const legend = d3.select("body").append("div").attr("class", "legend");
+                variables.forEach(variable => {
+                    const div = legend.append("div");
+                    div.append("input")
+                        .attr("type", "checkbox")
+                        .attr("checked", true)
+                        .attr("data-variable", variable)
+                        .on("change", function () {
+                            if (this.checked) {
+                                activeVariables.add(variable);
+                            } else {
+                                activeVariables.delete(variable);
+                            }
+                            updateChart();
+                        });
+                    div.append("span").text(variable).style("color", colors(variable));
+                });
+
+                let showExtremes = false;
+
+// Ensure button is created before adding event listener
+const toggleButton = document.createElement("button");
+toggleButton.id = "toggle-extremes";
+toggleButton.textContent = "Mostrar Picos";
+document.body.insertBefore(toggleButton, document.querySelector("svg"));
+
+toggleButton.addEventListener("click", function () {
+    showExtremes = !showExtremes;
+    this.textContent = showExtremes ? "Esconder picos" : "Mostrar Picos";
+
+    if (!showExtremes) {
+        // ✅ Remove all extreme labels when hiding min/max points
+        d3.selectAll(".extreme-point").remove();
+        document.querySelectorAll(".extreme-label").forEach(el => el.remove());
+    }
+    updateChart();
+});
+
+let showQuarterlyTrend = false;
+
+// Create the button for toggling the quarterly trend
+const trendButton = document.createElement("button");
+trendButton.id = "toggle-trend";
+trendButton.textContent = "Mostrar tendencia";
+document.body.insertBefore(trendButton, document.querySelector("svg"));
+
+trendButton.addEventListener("click", function () {
+    showQuarterlyTrend = !showQuarterlyTrend;
+    this.textContent = showQuarterlyTrend ? "Esconder Tendencia" : "Mostrar tendencia";
+    updateChart();  // Update the chart after toggling the trend
+});
+
+    
+                function updateChart() {
+                    const startIndex = +startSlider.property("value");
+                    const endIndex = +endSlider.property("value");
+                    const filteredData = data.slice(startIndex, endIndex + 1);
+                    
+                    const activeVars = Array.from(activeVariables);
+                    if (activeVars.length === 0) {
+                        svg.selectAll(".line").remove();
+                        return;
+                    }
+                    
+                    const startMinValue = d3.min(activeVars.map(v => filteredData[0][v]));
+                    const minValue = d3.min(filteredData, d => d3.min(activeVars.map(v => d[v]))) - startMinValue;
+                    const maxValue = d3.max(filteredData, d => d3.max(activeVars.map(v => d[v]))) - startMinValue;
+                    
+                    const xMin = d3.timeFormat("%Y-%m")(data[startIndex].Datum);
+                    const xMax = d3.timeFormat("%Y-%m")(data[endIndex].Datum);
+                    document.getElementById("chart-title").textContent = `PRA2 Visualización de la Inflación a lo largo del tiempo (${xMin} - ${xMax})`;
+
+
+                    xScale.domain(d3.extent(filteredData, d => d.Datum));
+                    yScale.domain([Math.min(0, minValue), maxValue]);
+                    
+                    
+                    svg.select(".y-axis").transition().duration(500).call(d3.axisLeft(yScale));
+                    svg.select(".x-axis").transition().duration(500).call(d3.axisBottom(xScale));
+                    
+                    let lines = svg.selectAll(".line").data(
+                        activeVars.map(v => ({
+                            key: v,
+                            values: filteredData.map(d => ({ Datum: d.Datum, value: d[v] - startMinValue }))
+                        }))
+                    );
+    
+                    lines.exit().remove();
+    
+                    lines.enter()
+                        .append("path")
+                        .merge(lines)
+                        .attr("class", "line")
+                        .attr("fill", "none")
+                        .attr("stroke", d => colors(d.key))
+                        .attr("stroke-width", 2)
+                        .transition().duration(500)
+                        .attr("d", d => line(d.values));
+
+
+                        if (showExtremes) {
+                            showExtremePoints(filteredData, activeVars, startMinValue);
+                        } else {
+                            svg.selectAll(".extreme-point").remove();
+                            svg.selectAll(".extreme-label").remove();
+                        }
+
+
+
+                            // Show the quarterly trend arrows if toggled on
+                        // Show the quarterly trend arrows if toggled on
+                        if (showQuarterlyTrend) {
+                            const trendArrows = calculateQuarterlyTrend(filteredData, activeVars, xScale, yScale);  // Pass xScale and yScale
+                            drawQuarterlyTrendArrows(trendArrows, svg, xScale, yScale, colors);  // Pass svg, xScale, yScale
+                        } else {
+                            svg.selectAll(".trend-arrow").remove();
+                        }
+
+                    return startMinValue;  // Return the startMinValue so it's accessible outside the function
+
+
+                }
+    
+
+
+                function showExtremePoints(filteredData, activeVars, startMinValue) {
+    let extremePoints = [];
+
+    activeVars.forEach(v => {
+        let minEntry = d3.min(filteredData, d => d[v]);
+        let maxEntry = d3.max(filteredData, d => d[v]);
+
+        let minPoint = filteredData.find(d => d[v] === minEntry);
+        let maxPoint = filteredData.find(d => d[v] === maxEntry);
+
+        if (minPoint) {
+            extremePoints.push({ Datum: minPoint.Datum, value: minEntry - startMinValue, variable: v, type: "min" });
+        }
+        if (maxPoint) {
+            extremePoints.push({ Datum: maxPoint.Datum, value: maxEntry - startMinValue, variable: v, type: "max" });
+        }
+    });
+
+    // Remove existing elements before adding new ones
+    d3.selectAll(".extreme-point").remove();
+    d3.selectAll(".extreme-label").remove();
+
+    // ✅ Add min/max points on the graph
+    svg.selectAll(".extreme-point")
+        .data(extremePoints)
+        .enter()
+        .append("circle")
+        .attr("class", "extreme-point")
+        .attr("cx", d => xScale(d.Datum))
+        .attr("cy", d => yScale(d.value))
+        .attr("r", 6) // Slightly bigger
+        .attr("fill", d => (d.type === "max" ? "#ff4d4d" : "#4da6ff")) // Red for max, blue for min
+        .attr("stroke", "black")
+        .attr("stroke-width", 1);
+
+    // ✅ Add floating labels (bubbles)
+    let chartRect = document.querySelector("svg").getBoundingClientRect(); // Get chart position
+
+    extremePoints.forEach(d => {
+        let bubble = document.createElement("div");
+        bubble.className = "extreme-label";
+        bubble.innerHTML = `<strong>${d.type === "max" ? "Píco más alto" : "Pico más bajo"} ${d.variable}</strong><br>${d.value.toFixed(2)}`;
+        
+        document.body.appendChild(bubble);
+
+        // Correctly position the bubble relative to the chart
+        let xPos = chartRect.left + xScale(d.Datum) + margin.left;
+        let yPos = chartRect.top + yScale(d.value) + margin.top - 30;
+
+        // Ensure labels don't go off-screen
+        let screenWidth = window.innerWidth;
+        if (xPos + 100 > screenWidth) {
+            xPos -= 60; // Move left if near the edge
+        }
+
+        bubble.style.left = `${xPos}px`;
+        bubble.style.top = `${yPos}px`;
+    });
+}
+
+
+
+
+
+                svg.append("rect")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .attr("fill", "transparent")
+                    .on("mousemove", function(event) {
+
+                        const [mouseX] = d3.pointer(event, this);
+                        const hoveredDate = xScale.invert(mouseX);
+    
+                        const closestData = data.reduce((prev, curr) => 
+                            Math.abs(curr.Datum - hoveredDate) < Math.abs(prev.Datum - hoveredDate) ? curr : prev
+                        );
+
+                        const startMinValue = updateChart(); // Call the updateChart function to get the updated startMinValue
+
+    
+                        let tooltipContent = `<strong>${d3.timeFormat("%Y-%m")(closestData.Datum)}</strong><br>`;
+                        
+                        activeVariables.forEach(v => {
+    // Adjusting the value for the tooltip (subtracting startMinValue)
+    const adjustedValue = closestData[v] - startMinValue;
+    tooltipContent += `<span style="color:${colors(v)}">${v}: ${adjustedValue.toFixed(2)}</span><br>`;
+});
+    
+                        tooltip.html(tooltipContent)
+                            .style("left", `${event.pageX + 10}px`)
+                            .style("top", `${event.pageY - 30}px`)
+                            .style("display", "block");
+                        
+                        hoverLine.style("display", "block")
+                            .attr("x1", mouseX)
+                            .attr("x2", mouseX)
+                            .attr("y1", 0)
+                            .attr("y2", height);
+                    })
+                    .on("mouseout", () => {
+                        tooltip.style("display", "none");
+                        hoverLine.style("display", "none");
+                    });
+                    const title = svg.append("text")
+    .attr("class", "chart-title")
+    .attr("x", width / 2)
+    .attr("y", -10)
+    .attr("text-anchor", "middle")
+    .style("font-size", "16px")
+    .style("font-weight", "bold");
+
+
+
+                    function updateLabels() {
+            startLabel.html(d3.timeFormat("%Y-%m")(data[+startSlider.property("value")].Datum))
+                .style("left", `${startSlider.node().getBoundingClientRect().left + startSlider.node().offsetWidth / 2 - 20}px`)
+                .style("top", `${startSlider.node().getBoundingClientRect().top - 25}px`)
+                .style("display", "block");
+
+            endLabel.html(d3.timeFormat("%Y-%m")(data[+endSlider.property("value")].Datum))
+                .style("left", `${endSlider.node().getBoundingClientRect().left + endSlider.node().offsetWidth / 2 - 20}px`)
+                .style("top", `${endSlider.node().getBoundingClientRect().top - 25}px`)
+                .style("display", "block");
+        }
+    
+                const sliderContainer = d3.select("body").append("div").attr("class", "slider-container");
+                const startSlider = sliderContainer.append("input")
+                    .attr("type", "range")
+                    .attr("min", 0)
+                    .attr("max", data.length - 1)
+                    .attr("value", 0);
+                const endSlider = sliderContainer.append("input")
+                    .attr("type", "range")
+                    .attr("min", 0)
+                    .attr("max", data.length - 1)
+                    .attr("value", data.length - 1);
+    
+                startSlider.on("input", updateChart);
+                endSlider.on("input", updateChart);
+                updateChart();
+                
+            });
+        });
+
+
+        function calculateQuarterlyTrend(filteredData, activeVars, xScale, yScale) {
+    let trendArrows = [];
+
+    activeVars.forEach(v => {
+        for (let i = 3; i < filteredData.length; i += 3) {  // Every 3 months (quarterly)
+            const prevValue = filteredData[i - 3][v];
+            const currentValue = filteredData[i][v];
+
+            // Calculate the X position based on the time scale
+            const prevX = xScale(filteredData[i - 3].Datum);
+            const currentX = xScale(filteredData[i].Datum);
+
+            // Calculate the trend (up or down)
+            const trend = currentValue > prevValue ? "up" : "down";
+
+            // Calculate the Y position of the arrow (just above or below the line)
+            const yPosition = yScale(currentValue);
+
+            // Define a small offset to move the arrow closer to the line
+            const arrowOffset = trend === "up" ? -5 : 5;  // Slight offset above or below the line
+
+            // Store the position of the arrow
+            trendArrows.push({
+                Datum: filteredData[i].Datum,
+                value: currentValue,
+                type: trend,
+                variable: v,
+                xPosition: currentX,
+                yPosition: yPosition + arrowOffset  // Adjust Y position close to the line
+            });
+        }
+    });
+
+    return trendArrows;
+}
+
+function drawQuarterlyTrendArrows(trendArrows, svg, xScale, yScale, colors) {
+    // Remove previous trend arrows before adding new ones
+    svg.selectAll(".trend-arrow").remove();
+
+    svg.selectAll(".trend-arrow")
+        .data(trendArrows)
+        .enter()
+        .append("text")
+        .attr("class", "trend-arrow")
+        .attr("x", d => d.xPosition)  // Use the X position from the trend arrows
+        .attr("y", d => d.yPosition)  // Use the Y position from the trend arrows
+        .attr("text-anchor", "middle")
+        .style("font-size", "16px")
+        .style("font-weight", "bold")
+        .style("fill", d => colors(d.variable))  // Color the arrow based on the variable
+        .style("transform", d => `rotate(0deg)`)  // No rotation needed
+        .text(d => d.type === "up" ? "↑" : "↓");  // Arrow for increase or decrease
+}
+
+
+
+
+    </script>
+    
+</body>
+</html>
